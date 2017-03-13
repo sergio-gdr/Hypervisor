@@ -89,7 +89,8 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
  /* whatever can be 0, default to 0 (except what we want to enable) */
 
  read_caps(HV_VMX_CAP_PINBASED, &cap); // read capabilities of pin-based VM-execution controls
- write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, (((cap >> 32) & cap) | 0x1) & 0xffffffff); // VM-exit on external interrupts
+ /* VM-exit on external interrupts */
+ write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, (((cap >> 32) & cap) | 0x1) & 0xffffffff);
 
  read_vmcs(vcpu, HV_VMX_CAP_PROCBASED, &cap);
  write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (((cap >> 32) & cap) | BITMAP_1) & 0xffffffff);
@@ -111,15 +112,27 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  write_vmcs(vcpu, VMCS_GUEST_CS, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_CS_ACCESS_RIGHTS, 0x9b);
  write_vmcs(vcpu, VMCS_GUEST_DS, 0);
  write_vmcs(vcpu, VMCS_GUEST_DS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_DS_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_DS_ACCESS_RIGHTS, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_ES, 0);
  write_vmcs(vcpu, VMCS_GUEST_ES_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_ES_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_ES_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_FS, 0);
+ write_vmcs(vcpu, VMCS_GUEST_FS_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_FS_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_FS_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_GS, 0);
+ write_vmcs(vcpu, VMCS_GUEST_GS_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_GS_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_GS_ACCESS_RIGHTS, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_SS, 0);
  write_vmcs(vcpu, VMCS_GUEST_SS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_SS_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_SS_ACCESS_RIGHTS, 0x93);
 }
 
 int main(int argc, char *argv[])
