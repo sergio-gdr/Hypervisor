@@ -112,27 +112,27 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  write_vmcs(vcpu, VMCS_GUEST_CS, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_CS_ACCESS_RIGHTS, 0x9b);
+ write_vmcs(vcpu, VMCS_GUEST_CS_AR, 0x9b);
  write_vmcs(vcpu, VMCS_GUEST_DS, 0);
  write_vmcs(vcpu, VMCS_GUEST_DS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_DS_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_DS_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_DS_AR, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_ES, 0);
  write_vmcs(vcpu, VMCS_GUEST_ES_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_ES_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_ES_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_ES_AR, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_FS, 0);
  write_vmcs(vcpu, VMCS_GUEST_FS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_FS_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_FS_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_FS_AR, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_GS, 0);
  write_vmcs(vcpu, VMCS_GUEST_GS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_GS_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_GS_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_GS_AR, 0x93);
  write_vmcs(vcpu, VMCS_GUEST_SS, 0);
  write_vmcs(vcpu, VMCS_GUEST_SS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_SS_LIMIT, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_SS_ACCESS_RIGHTS, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_SS_AR, 0x93);
 }
 
 int main(int argc, char *argv[])
@@ -151,17 +151,17 @@ int main(int argc, char *argv[])
  }
 
  /* Create Virtual CPU. Can now manipulate vmcs. */
- hv_vcpuid_t *vcpu;
- if ( (ret = hv_vcpu_create(vcpu, HV_VCPU_DEFAULT)) != HV_SUCCESS) {
+ hv_vcpuid_t vcpu;
+ if ( (ret = hv_vcpu_create(&vcpu, HV_VCPU_DEFAULT)) != HV_SUCCESS) {
   print_err(ret);
   exit(0);
  }
 
  /* Set the vmcs guest area */
- vmcs_init_guest(vcpu);
+ vmcs_init_guest(&vcpu);
 
  /* Set the vmcs control area */
- vmcs_init_ctrl(vcpu);
+ vmcs_init_ctrl(&vcpu);
 
  /* Allocate page-aligned memory and map to guest address 0x0 */
  static void *mem_map;
@@ -178,8 +178,8 @@ int main(int argc, char *argv[])
 
  uint64_t exit_reas;
  while (1) {
-  HV_EXEC(vcpu);
-  read_vmcs(vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
+  HV_EXEC(&vcpu);
+  read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
   switch (exit_reas) {
    case VMX_REASON_HLT:
     ;
