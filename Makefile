@@ -1,5 +1,5 @@
-hyper:
-	clang -framework Hypervisor hyper.c -o hyper
+monitor:
+	clang -g -O0 -framework Hypervisor monitor.c -o monitor
 exec:
-	clang -pipe  -ffreestanding -mno-mmx -mno-3dnow -mno-sse -mno-sse2 -mno-sse3  -c exec.s
+	clang -c exec.s
 	gobjcopy -O binary exec.o exec

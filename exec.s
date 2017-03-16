@@ -6,6 +6,6 @@
 .set TICKS, 0xb6
 
 .globl entry
-.code64
+.code16
 entry:
- movq $1, %rax
+ hlt
