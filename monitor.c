@@ -89,10 +89,8 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
 
  /* whatever can be 0, default to 0 (except what we want to enable) */
 
- read_caps(HV_VMX_CAP_PINBASED, &cap); // read capabilities of pin-based VM-execution controls
- /* VM-exit on external interrupts */
- 
- write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, (0x1 | (cap & 0xffffffff)) & (cap >> 32));
+ read_caps(HV_VMX_CAP_PINBASED, &cap);
+ write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, (0x1 | (cap & 0xffffffff)) & (cap >> 32)); // VM-exit on external interrupts
 
  read_vmcs(vcpu, HV_VMX_CAP_PROCBASED, &cap);
  write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (BITMAP_1 | (cap & 0xffffffff)) & (cap >> 32));
@@ -102,15 +100,18 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
 
  read_vmcs(vcpu, HV_VMX_CAP_ENTRY, &cap);
  write_vmcs(vcpu, VMCS_CTRL_VMENTRY_CONTROLS, (BITMAP_3 | (cap & 0xffffffff)) & (cap >> 32));
+
+ //write_vmcs(vcpu, VMCS_CTRL_EXC_BITMAP, 0);
+ //write_vmcs(vcpu, VMCS_CTRL_TPR_THRESHOLD, 0);
 }
 
 /* incomplete */
 static void vmcs_init_guest(hv_vcpuid_t *vcpu)
 {
  //write_vmcs(vcpu, VMCS_ENTRY_CTLS, 0);
- write_vmcs(vcpu, VMCS_GUEST_RIP, 0x100);
- write_vmcs(vcpu, VMCS_GUEST_RSP, SEGM_SIZE);
- write_vmcs(vcpu, VMCS_GUEST_RFLAGS, 0x2);
+ write_vmcs(vcpu, VMCS_GUEST_RIP, 0x100); // load program segment at segment:offset -> 0x0:0x100
+ write_vmcs(vcpu, VMCS_GUEST_RSP, SEGM_SIZE); // stack pointer at segment:offset -> 0x0:0xffff
+ write_vmcs(vcpu, VMCS_GUEST_RFLAGS, 0x0);
 
  write_vmcs(vcpu, VMCS_GUEST_IA32_EFER, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS, 0);
@@ -138,7 +139,7 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  write_vmcs(vcpu, VMCS_GUEST_SS_LIMIT, SEGM_SIZE);
  write_vmcs(vcpu, VMCS_GUEST_SS_AR, 0x93);
 
- write_vmcs(vcpu, VMCS_GUEST_CR0, 0x60000010); // in particular, PE and PG disabled
+ write_vmcs(vcpu, VMCS_GUEST_CR0, 0x60000010); // in particular, PE and PG disabled; execute in real-mode
  //write_vmcs(vcpu, VMCS_GUEST_CR3, 0x0);
  write_vmcs(vcpu, VMCS_GUEST_CR4, 1L<<13);
 
@@ -185,15 +186,10 @@ int main(int argc, char *argv[])
  read(raw_fd, mem_map+0x100, file_stat.st_size); // executable code at address 0x100
  close(raw_fd);
 
+ /* Main loop: execute program in virtualized environment until VM exit. Handle VM exit reason */
  uint64_t exit_reas, err;
  while (1) {
-  read_vmcs(&vcpu, VMCS_RO_INSTR_ERROR, &err);
-  if ( (ret = hv_vcpu_run(vcpu)) != HV_SUCCESS) {
-   print_err(ret);
-   exit(0);
-  }
-  //HV_EXEC(&vcpu);
-  read_vmcs(&vcpu, VMCS_RO_INSTR_ERROR, &err);
+  HV_EXEC(&vcpu);
   read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
   switch (exit_reas) {
    case VMX_REASON_HLT:
