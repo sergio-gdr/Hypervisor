@@ -13,9 +13,11 @@
 #define CTRL_HALT_INSTR (1<<7) // VM exit when guest executes halt instruction
 #define CTRL_UNCON_IO (1<<24) // VM exit when guest executes IO instruction
 #define CTRL_SECOND (1<<31) // enable secondary processor controls
-#define BITMAP_1 (CTRL_HALT_INSTR | CTRL_UNCON_IO | CTRL_SECOND) // bitmap for primary processor-based ctrl
-#define BITMAP_2 CTRL_UNRSTR
-#define BITMAP_3 0
+#define PRI_DEF1 (0x401E172) // default1's for primary
+#define PIN_DEF1 (0x16)
+#define PIN_BITMAP (PIN_DEF1 | 0x1)
+#define PROC1_BITMAP (PRI_DEF1 | CTRL_HALT_INSTR | CTRL_UNCON_IO | CTRL_SECOND) // primary processor-based ctrl
+#define PROC2_BITMAP CTRL_UNRSTR
 
 #define VM_MEM_MAP(uva, gpa, size, flags) \
  if ( (ret = hv_vm_map(uva, gpa, size, flags) != HV_SUCCESS)) { \
@@ -87,22 +89,22 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
 {
  uint64_t cap;
 
- /* whatever can be 0, default to 0 (except what we want to enable) */
+ /* set default1 bits and some capabilities */
 
  read_caps(HV_VMX_CAP_PINBASED, &cap);
- write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, (0x1 | (cap & 0xffffffff)) & (cap >> 32)); // VM-exit on external interrupts
+ write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, PIN_BITMAP | ((cap & 0xffffffff) & (cap >> 32))); // VM-exit on external interrupts
 
  read_vmcs(vcpu, HV_VMX_CAP_PROCBASED, &cap);
- write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (BITMAP_1 | (cap & 0xffffffff)) & (cap >> 32));
+ write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (PROC1_BITMAP | (cap & 0xffffffff)) & (cap >> 32));
 
  read_vmcs(vcpu, HV_VMX_CAP_PROCBASED2, &cap);
- write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (BITMAP_2 | (cap & 0xffffffff)) & (cap >> 32));
+ write_vmcs(vcpu, VMCS_CTRL_CPU_BASED2, (PROC2_BITMAP | (cap & 0xffffffff)) & (cap >> 32));
 
  read_vmcs(vcpu, HV_VMX_CAP_ENTRY, &cap);
- write_vmcs(vcpu, VMCS_CTRL_VMENTRY_CONTROLS, (BITMAP_3 | (cap & 0xffffffff)) & (cap >> 32));
+ write_vmcs(vcpu, VMCS_CTRL_VMENTRY_CONTROLS, (0x11ff | (cap & 0xffffffff)) & (cap >> 32));
 
- //write_vmcs(vcpu, VMCS_CTRL_EXC_BITMAP, 0);
- //write_vmcs(vcpu, VMCS_CTRL_TPR_THRESHOLD, 0);
+ read_vmcs(vcpu, HV_VMX_CAP_EXIT, &cap);
+ write_vmcs(vcpu, VMCS_CTRL_VMEXIT_CONTROLS, (0x36dff | (cap & 0xffffffff)) & (cap >> 32));
 }
 
 /* incomplete */
@@ -190,7 +192,8 @@ int main(int argc, char *argv[])
  uint64_t exit_reas, err;
  while (1) {
   HV_EXEC(&vcpu);
-  read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
+  //read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
+  read_vmcs(&vcpu, VMCS_RO_INSTR_ERROR, &exit_reas);
   switch (exit_reas) {
    case VMX_REASON_HLT:
     ;
