@@ -31,6 +31,11 @@
   exit(0); \
  }
 
+struct ept_pml4e {
+ char access[3];
+ int addr;
+};
+
 static void print_err(hv_return_t err)
 {
  switch (err) {
@@ -94,16 +99,16 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
  read_caps(HV_VMX_CAP_PINBASED, &cap);
  write_vmcs(vcpu, VMCS_CTRL_PIN_BASED, PIN_BITMAP | ((cap & 0xffffffff) & (cap >> 32))); // VM-exit on external interrupts
 
- read_vmcs(vcpu, HV_VMX_CAP_PROCBASED, &cap);
+ read_caps(HV_VMX_CAP_PROCBASED, &cap);
  write_vmcs(vcpu, VMCS_CTRL_CPU_BASED, (PROC1_BITMAP | (cap & 0xffffffff)) & (cap >> 32));
 
- read_vmcs(vcpu, HV_VMX_CAP_PROCBASED2, &cap);
+ read_caps(HV_VMX_CAP_PROCBASED2, &cap);
  write_vmcs(vcpu, VMCS_CTRL_CPU_BASED2, (PROC2_BITMAP | (cap & 0xffffffff)) & (cap >> 32));
 
- read_vmcs(vcpu, HV_VMX_CAP_ENTRY, &cap);
+ read_caps(HV_VMX_CAP_ENTRY, &cap);
  write_vmcs(vcpu, VMCS_CTRL_VMENTRY_CONTROLS, (0x11ff | (cap & 0xffffffff)) & (cap >> 32));
 
- read_vmcs(vcpu, HV_VMX_CAP_EXIT, &cap);
+ read_caps(HV_VMX_CAP_EXIT, &cap);
  write_vmcs(vcpu, VMCS_CTRL_VMEXIT_CONTROLS, (0x36dff | (cap & 0xffffffff)) & (cap >> 32));
 }
 
@@ -113,9 +118,14 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  //write_vmcs(vcpu, VMCS_ENTRY_CTLS, 0);
  write_vmcs(vcpu, VMCS_GUEST_RIP, 0x100); // load program segment at segment:offset -> 0x0:0x100
  write_vmcs(vcpu, VMCS_GUEST_RSP, SEGM_SIZE); // stack pointer at segment:offset -> 0x0:0xffff
- write_vmcs(vcpu, VMCS_GUEST_RFLAGS, 0x0);
+ write_vmcs(vcpu, VMCS_GUEST_RFLAGS, 0x2);
 
+ write_vmcs(vcpu, VMCS_GUEST_IA32_DEBUGCTL, 0x0);
  write_vmcs(vcpu, VMCS_GUEST_IA32_EFER, 0);
+ write_vmcs(vcpu, VMCS_GUEST_TR, 0);
+ write_vmcs(vcpu, VMCS_GUEST_TR_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_TR_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_TR_AR, 0x83);
  write_vmcs(vcpu, VMCS_GUEST_CS, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_CS_LIMIT, SEGM_SIZE);
@@ -140,16 +150,24 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  write_vmcs(vcpu, VMCS_GUEST_SS_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_SS_LIMIT, SEGM_SIZE);
  write_vmcs(vcpu, VMCS_GUEST_SS_AR, 0x93);
+ write_vmcs(vcpu, VMCS_GUEST_LDTR, 0);
+ write_vmcs(vcpu, VMCS_GUEST_LDTR_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_LDTR_LIMIT, SEGM_SIZE);
+ write_vmcs(vcpu, VMCS_GUEST_LDTR_AR, 0x82);
+ write_vmcs(vcpu, VMCS_GUEST_GDTR_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_IDTR_BASE, 0);
 
  write_vmcs(vcpu, VMCS_GUEST_CR0, 0x60000010); // in particular, PE and PG disabled; execute in real-mode
- //write_vmcs(vcpu, VMCS_GUEST_CR3, 0x0);
+ write_vmcs(vcpu, VMCS_GUEST_CR3, 0x0);
+ write_vmcs(vcpu, VMCS_GUEST_DR7, 0x0);
+ write_vmcs(vcpu, VMCS_GUEST_SYSENTER_EIP, 0x6826);
+ write_vmcs(vcpu, VMCS_GUEST_SYSENTER_ESP, 0x6824);
  write_vmcs(vcpu, VMCS_GUEST_CR4, 1L<<13);
 
 }
 
 int main(int argc, char *argv[])
 {
-
  if (argc == 1) {
   printf("Supply file path as argument\n");
   exit(0);
@@ -175,10 +193,18 @@ int main(int argc, char *argv[])
  /* Set the vmcs control area */
  vmcs_init_ctrl(&vcpu);
 
- /* Allocate page-aligned memory and map to guest address 0x0 */
+ /* Allocate page-aligned memory and map to guest address space at 0x0 */
  static char *mem_map;
  posix_memalign((void **)&mem_map, 4096, SEGM_SIZE); // memory must be aligned to page boundary
  VM_MEM_MAP(mem_map, 0, SEGM_SIZE, HV_MEMORY_READ | HV_MEMORY_WRITE | HV_MEMORY_EXEC);
+
+ /* PML4 entry structure */
+ static struct ept_pml4e *pml4;
+ posix_memalign((void **)&pml4, 4096, SEGM_SIZE);
+ write_vmcs(&vcpu, VMCS_CTRL_EPTP, ((uint64_t)pml4)<<12);
+ pml4->access[0] = 0x7;
+ pml4->access[1] = pml4->access[2] = 0;
+ //pml4->addr = 
 
  /* open file to execute (no error checking) */
  struct stat file_stat;
@@ -192,8 +218,8 @@ int main(int argc, char *argv[])
  uint64_t exit_reas, err;
  while (1) {
   HV_EXEC(&vcpu);
-  //read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
-  read_vmcs(&vcpu, VMCS_RO_INSTR_ERROR, &exit_reas);
+  read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
+  //read_vmcs(&vcpu, VMCS_RO_EXIT_QUALIFIC, &exit_reas); // for debugging
   switch (exit_reas) {
    case VMX_REASON_HLT:
     ;
