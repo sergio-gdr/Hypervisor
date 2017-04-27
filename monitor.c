@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <Hypervisor/hv.h>
@@ -30,11 +31,6 @@
   print_err(ret); \
   exit(0); \
  }
-
-struct ept_pml4e {
- char access[3];
- int addr;
-};
 
 static void print_err(hv_return_t err)
 {
@@ -115,7 +111,6 @@ static void vmcs_init_ctrl(hv_vcpuid_t *vcpu)
 /* incomplete */
 static void vmcs_init_guest(hv_vcpuid_t *vcpu)
 {
- //write_vmcs(vcpu, VMCS_ENTRY_CTLS, 0);
  write_vmcs(vcpu, VMCS_GUEST_RIP, 0x100); // load program segment at segment:offset -> 0x0:0x100
  write_vmcs(vcpu, VMCS_GUEST_RSP, SEGM_SIZE); // stack pointer at segment:offset -> 0x0:0xffff
  write_vmcs(vcpu, VMCS_GUEST_RFLAGS, 0x2);
@@ -126,8 +121,8 @@ static void vmcs_init_guest(hv_vcpuid_t *vcpu)
  write_vmcs(vcpu, VMCS_GUEST_TR_BASE, 0);
  write_vmcs(vcpu, VMCS_GUEST_TR_LIMIT, SEGM_SIZE);
  write_vmcs(vcpu, VMCS_GUEST_TR_AR, 0x83);
- write_vmcs(vcpu, VMCS_GUEST_CS, 0);
- write_vmcs(vcpu, VMCS_GUEST_CS_BASE, 0);
+ write_vmcs(vcpu, VMCS_GUEST_CS, 0x0);
+ write_vmcs(vcpu, VMCS_GUEST_CS_BASE, 0x0);
  write_vmcs(vcpu, VMCS_GUEST_CS_LIMIT, SEGM_SIZE);
  write_vmcs(vcpu, VMCS_GUEST_CS_AR, 0x9b);
  write_vmcs(vcpu, VMCS_GUEST_DS, 0);
@@ -196,15 +191,6 @@ int main(int argc, char *argv[])
  /* Allocate page-aligned memory and map to guest address space at 0x0 */
  static char *mem_map;
  posix_memalign((void **)&mem_map, 4096, SEGM_SIZE); // memory must be aligned to page boundary
- VM_MEM_MAP(mem_map, 0, SEGM_SIZE, HV_MEMORY_READ | HV_MEMORY_WRITE | HV_MEMORY_EXEC);
-
- /* PML4 entry structure */
- static struct ept_pml4e *pml4;
- posix_memalign((void **)&pml4, 4096, SEGM_SIZE);
- write_vmcs(&vcpu, VMCS_CTRL_EPTP, ((uint64_t)pml4)<<12);
- pml4->access[0] = 0x7;
- pml4->access[1] = pml4->access[2] = 0;
- //pml4->addr = 
 
  /* open file to execute (no error checking) */
  struct stat file_stat;
@@ -214,17 +200,23 @@ int main(int argc, char *argv[])
  read(raw_fd, mem_map+0x100, file_stat.st_size); // executable code at address 0x100
  close(raw_fd);
 
- /* Main loop: execute program in virtualized environment until VM exit. Handle VM exit reason */
+ VM_MEM_MAP(mem_map, 0, SEGM_SIZE, HV_MEMORY_READ | HV_MEMORY_WRITE | HV_MEMORY_EXEC);
+ hv_vcpu_flush(vcpu);
+
+ /* Main loop: execute guest until VM exit */
  uint64_t exit_reas, err;
  while (1) {
   HV_EXEC(&vcpu);
   read_vmcs(&vcpu, VMCS_RO_EXIT_REASON, &exit_reas);
   //read_vmcs(&vcpu, VMCS_RO_EXIT_QUALIFIC, &exit_reas); // for debugging
+  //read_vmcs(&vcpu, VMCS_RO_GUEST_LIN_ADDR, &exit_reas); // for debugging
   switch (exit_reas) {
    case VMX_REASON_HLT:
     ;
    case VMX_REASON_IO:
     ;
+   case VMX_REASON_EPT_VIOLATION:
+    hv_vm_protect(0x100, 0x100, HV_MEMORY_EXEC);
    default:
     ;
   }
